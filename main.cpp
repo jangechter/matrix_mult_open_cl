@@ -31,6 +31,16 @@ const char *sProgramSource[]={
 };
 
 //int row = blockIdx.y * blockDim.y + threadIdx.y
+
+/*
+"   int row = get_group_id(1) * get_local_size(1) + get_local_id(1);",
+"   int col = get_group_id(0) * get_local_size(0) + get_local_id(0);",
+
+         "   int row = get_global_id(1);",
+        "   int col = get_global_id(0);",
+
+ */
+
 const char *sMatrixMultiplication[]={
         "__kernel void matrix_matrix_multiplication(__global const float *a,",
         "                        __global const float *b,",
@@ -40,7 +50,7 @@ const char *sMatrixMultiplication[]={
         "   int row = get_group_id(1) * get_local_size(1) + get_local_id(1);",
         "   int col = get_group_id(0) * get_local_size(0) + get_local_id(0);",
         "   ",
-        "   int tempSum = 0;",
+        "   float tempSum = 0.0f;",
         "   if( (row < n) && (col < n) ) {",
         "       for(int k = 0; k < n; k++) {",
         "               ",
@@ -319,9 +329,12 @@ void run_kernel(cl_kernel hKernel, cl_context hContext,
 
 void run_kernel_matrix_multiplication(cl_kernel hKernel, cl_context hContext, cl_command_queue hCmdQueue) {
 
-    size_t matrix_size = 1024;
 
-    size_t local_size = 16;
+
+    int matrix_size = 1024;
+
+    size_t global_working_size[2] = {1024, 1024};
+    size_t local_working_size[2] = {16, 16};
 
     size_t cnDimension = matrix_size * matrix_size;
 
@@ -359,12 +372,19 @@ void run_kernel_matrix_multiplication(cl_kernel hKernel, cl_context hContext, cl
     hDeviceMemA = clCreateBuffer(hContext,
                                  CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
                                  cnDimension * sizeof(cl_float), pA[0], &err);
+
+    //Copy Matrix A to the device
+    //clEnqueueWriteBuffer(hCmdQueue, hDeviceMemA, CL_TRUE, 0, cnDimension * sizeof (cl_float), (void*)pA[0], 0, NULL, NULL);
+
     if (err != CL_SUCCESS)
         printf("error clCreateBuffer\n");
 
     hDeviceMemB = clCreateBuffer(hContext,
                                  CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
                                  cnDimension * sizeof(cl_float), pB[0], &err);
+
+    //clEnqueueWriteBuffer(hCmdQueue, hDeviceMemB, CL_TRUE, 0, cnDimension * sizeof (cl_float), (void*)pB[0], 0, NULL, NULL);
+
     if (err != CL_SUCCESS)
         printf("error clCreateBuffer\n");
 
@@ -379,7 +399,7 @@ void run_kernel_matrix_multiplication(cl_kernel hKernel, cl_context hContext, cl
     clSetKernelArg(hKernel, 0, sizeof(cl_mem), (void *)&hDeviceMemA);
     clSetKernelArg(hKernel, 1, sizeof(cl_mem), (void *)&hDeviceMemB);
     clSetKernelArg(hKernel, 2, sizeof(cl_mem), (void *)&hDeviceMemC);
-    clSetKernelArg(hKernel, 3, sizeof(size_t), (void *)&matrix_size);
+    clSetKernelArg(hKernel, 3, sizeof(cl_int), (void *)&matrix_size);
 
     // execute kernel
     //    cl_int clEnqueueNDRangeKernel (cl_command_queue command_queue,
@@ -393,8 +413,8 @@ void run_kernel_matrix_multiplication(cl_kernel hKernel, cl_context hContext, cl
     //	cl_event *event)
     cl_event tester;
 
-    clEnqueueNDRangeKernel(hCmdQueue, hKernel, 2, 0, &cnDimension,
-                           &local_size, 0, NULL, &tester);
+    clEnqueueNDRangeKernel(hCmdQueue, hKernel, 2, 0, global_working_size,
+                           local_working_size, 0, NULL, &tester);
     clWaitForEvents(1, &tester);
 
     // copy results from device back to host.
@@ -402,7 +422,7 @@ void run_kernel_matrix_multiplication(cl_kernel hKernel, cl_context hContext, cl
     // the kernes is executed asynchronous,
     // but this command blocks until the job is done
     err = clEnqueueReadBuffer(hCmdQueue, hDeviceMemC, CL_TRUE, 0,
-                              cnDimension * sizeof(cl_float), pC, 0, NULL, NULL);
+                              cnDimension * sizeof(cl_float), pC[0], 0, NULL, NULL);
     if (err != CL_SUCCESS)
         printf("error clEnqueueReadBuffer\n");
 
