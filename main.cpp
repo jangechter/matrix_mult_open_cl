@@ -13,6 +13,7 @@
 #include <sys/time.h>
 #include <unistd.h>
 #include <ctime>
+#include <iostream>
 
 // OpenCL variables
 
@@ -327,7 +328,7 @@ void run_kernel(cl_kernel hKernel, cl_context hContext,
     clReleaseContext(hContext);
 }
 
-void run_kernel_matrix_multiplication(cl_kernel hKernel, cl_context hContext, cl_command_queue hCmdQueue) {
+float run_kernel_matrix_multiplication(cl_kernel hKernel, cl_context hContext, cl_command_queue hCmdQueue, float ** pA, float ** pB) {
 
 
 
@@ -341,18 +342,11 @@ void run_kernel_matrix_multiplication(cl_kernel hKernel, cl_context hContext, cl
     cl_int err;             //errorFlag
 
     // allocate host matrices
-    float ** pA = (float **) malloc(matrix_size * sizeof(float*));
-    float ** pB = (float **) malloc(matrix_size * sizeof(float*));
     float ** pC = (float **) malloc(matrix_size * sizeof(float*));
 
-    pA[0] = (float *) malloc(matrix_size * matrix_size * sizeof (float ));
-    pB[0] = (float *) malloc(matrix_size * matrix_size * sizeof (float ));
     pC[0] = (float *) malloc(matrix_size * matrix_size * sizeof (float ));
 
     for(cl_uint i = 1; i < matrix_size; i++) {
-
-        pA[i] = pA[i - 1] + matrix_size;
-        pB[i] = pB[i - 1] + matrix_size;
         pC[i] = pC[i - 1] + matrix_size;
     }
 
@@ -361,8 +355,6 @@ void run_kernel_matrix_multiplication(cl_kernel hKernel, cl_context hContext, cl
 
         for(cl_int col = 0; col < matrix_size; col++) {
 
-            pA[row][col] = (float)rand() / (float) (RAND_MAX) + 2.0;
-            pB[row][col] = (float)rand() / (float) (RAND_MAX) + 2.0;
             pC[row][col] = 0;
         }
     }
@@ -413,6 +405,8 @@ void run_kernel_matrix_multiplication(cl_kernel hKernel, cl_context hContext, cl
     //	cl_event *event)
     cl_event tester;
 
+    double t1 = second();
+
     clEnqueueNDRangeKernel(hCmdQueue, hKernel, 2, 0, global_working_size,
                            local_working_size, 0, NULL, &tester);
     clWaitForEvents(1, &tester);
@@ -423,17 +417,32 @@ void run_kernel_matrix_multiplication(cl_kernel hKernel, cl_context hContext, cl
     // but this command blocks until the job is done
     err = clEnqueueReadBuffer(hCmdQueue, hDeviceMemC, CL_TRUE, 0,
                               cnDimension * sizeof(cl_float), pC[0], 0, NULL, NULL);
+
+    double t2 = second();
+
+    double time = t2 - t1;
+    long long numberOperations = (2 * 1024L * 1024L * 1024L);
+
+    if(numberOperations < 0)
+        numberOperations*=-1;
+
+    double flops = (numberOperations / time) / 1000000000L;
+    printf("GPU Matrix: %fs %f GFLOPS\n", time, flops);
+
+
+    //-2.147.483.648
+    //2.147.483.648
+
     if (err != CL_SUCCESS)
         printf("error clEnqueueReadBuffer\n");
 
-    printf("matrix matrix multiplication ready with %10.4e (pA[3][3]) ;  %10.4e (pB[3][3]) ; %10.4e (pC[3][3])\n",
-           pA[3][3],pB[3][3],pC[3][3]);
+    //printf("matrix matrix multiplication ready with %10.4e (pA[3][3]) ;  %10.4e (pB[3][3]) ; %10.4e (pC[3][3])\n",
+    //       pA[3][3],pB[3][3],pC[3][3]);
+
+    float returnValue = pC[10][100];
 
     // now clean everything
-    free(pA[0]);
-    free(pA);
-    free(pB[0]);
-    free(pB);
+
     free(pC[0]);
     free(pC);
 
@@ -444,12 +453,73 @@ void run_kernel_matrix_multiplication(cl_kernel hKernel, cl_context hContext, cl
     clReleaseKernel(hKernel);
     clReleaseCommandQueue(hCmdQueue);
     clReleaseContext(hContext);
+
+    return returnValue;
+}
+
+void matrix_multiplication_cpu(float** a, float** b, float** c, int n) {
+
+    double t1 = second();
+
+    for(int row = 0; row < n; row++) {
+
+        for(int k = 0; k < n; k++) {
+
+            for(int col = 0; col < n; col++) {
+
+                c[row][col] += a[row][k] * b[k][col];
+            }
+        }
+
+    }
+
+    double t2 = second();
+
+    double time = t2 - t1;
+
+    long long numberOperations = (2 * 1024L * 1024L * 1024L);
+
+    if(numberOperations < 0)
+        numberOperations*=-1;
+
+    double flops = (numberOperations / time) / 1000000000L;
+
+    printf("CPU Matrix: %fs  %f GFLOPS\n",  time, flops);
 }
 
 /***********************
  * main function
  ***********************/
 int main() {
+
+    int matrix_size = 1024;
+
+    // allocate host matrices
+    float ** pA = (float **) malloc(matrix_size * sizeof(float*));
+    float ** pB = (float **) malloc(matrix_size * sizeof(float*));
+    float ** pC = (float **) malloc(matrix_size * sizeof(float*));
+
+    pA[0] = (float *) malloc(matrix_size * matrix_size * sizeof (float ));
+    pB[0] = (float *) malloc(matrix_size * matrix_size * sizeof (float ));
+    pC[0] = (float *) malloc(matrix_size * matrix_size * sizeof (float ));
+
+    for(cl_uint i = 1; i < matrix_size; i++) {
+
+        pA[i] = pA[i - 1] + matrix_size;
+        pB[i] = pB[i - 1] + matrix_size;
+        pC[i] = pC[i - 1] + matrix_size;
+    }
+
+    // initialize host memory
+    for (cl_uint row=0; row < matrix_size; row++) {
+
+        for(cl_int col = 0; col < matrix_size; col++) {
+
+            pA[row][col] = (float)rand() / (float) (RAND_MAX) + 2.0;
+            pB[row][col] = (float)rand() / (float) (RAND_MAX) + 2.0;
+            pC[row][col] = 0;
+        }
+    }
 
     // create OpenCL context and queue
     cl_context hContext;
@@ -464,8 +534,19 @@ int main() {
 
     // allocate memory, set the parameters for the kernel, run kernel and clean up
     //run_kernel(hKernel, hContext, hCmdQueue);
-    run_kernel_matrix_multiplication(hKernel, hContext, hCmdQueue);
+    float gpuValue = run_kernel_matrix_multiplication(hKernel, hContext, hCmdQueue, pA, pB);
 
+    matrix_multiplication_cpu(pA, pB, pC, matrix_size);
+
+    printf("GPU value: %f\n", gpuValue);
+    printf("CPU value: %f\n", pC[10][100]);
+
+    free(pA[0]);
+    free(pA);
+    free(pB[0]);
+    free(pB);
+    free(pC[0]);
+    free(pC);
 
     return 0;
 }
