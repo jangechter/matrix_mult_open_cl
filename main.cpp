@@ -3,6 +3,7 @@
  * The program is an extened version of an example program 
  * without error checking from Nvidia Corporation, 
  * written by Jens Graebel and Peer Ueberholz
+ * modified to Matrix-Matrix multiplication by Jan Gechter
  ***********************/
 
 //#define CL_TARGET_OPENCL_VERSION 220
